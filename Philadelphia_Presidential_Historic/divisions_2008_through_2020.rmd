@@ -1,0 +1,191 @@
+---
+title: "historic animation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(sf)
+library(openxlsx)
+library(gt)
+```
+
+```{r}
+general_2008 <- read.csv("./data/2008_General_WD.csv", stringsAsFactors = F) %>%
+  select(1:6) %>%
+  mutate(ward_division = paste0(str_pad(WARD, 2, "left", "0"), str_pad(DIVISION, 2, "left", "0"))) %>%
+  rename("Democratic" = 3, "Libertarian" = 4, "Republican" = 5, "Green" = 6) %>%
+  select(ward_division, Democratic, Republican, Libertarian, Green) %>%
+  gather(key = "PARTY", value = "VOTES", -ward_division) %>%
+  group_by(ward_division) %>%
+  mutate(vote_pct = round(VOTES / sum(VOTES), 2),
+         Year = "2008") %>%
+  arrange(desc(vote_pct))
+general_2012 <- read.csv("./data/2012_General_WD.csv", stringsAsFactors = F) %>%
+  select(1:6) %>%
+  mutate(ward_division = paste0(str_pad(WARD, 2, "left", "0"), str_pad(DIVISION, 2, "left", "0"))) %>%
+  rename("Democratic" = 3, "Libertarian" = 4, "Green" = 5, "Republican" = 6) %>%
+  select(ward_division, Democratic, Republican, Libertarian, Green) %>%
+  gather(key = "PARTY", value = "VOTES", -ward_division) %>%
+  group_by(ward_division) %>%
+  mutate(vote_pct = round(VOTES / sum(VOTES), 2),
+         Year = "2012") %>%
+  arrange(desc(vote_pct))
+general_2016 <- read.xlsx("./data/2016_GENERAL_-_RESULTS_-_RECANVASS.xlsx", sheet = 3) %>%
+  filter(grepl("^PRESID", OFFICE)) %>%
+  mutate(ward_division = paste0(str_pad(WARD, 2, "left", "0"), str_pad(DIVISION, 2, "left", "0")),
+         PARTY = case_when(
+           is.na(PARTY) ~ "Write-In",
+           TRUE ~ str_to_title(PARTY)
+         )) %>%
+  group_by(ward_division, PARTY) %>%
+  summarize(VOTES = sum(VOTES)) %>%
+  ungroup() %>%
+  group_by(ward_division) %>%
+  mutate(vote_pct = round(VOTES / sum(VOTES), 2),
+         Year = "2016") %>%
+  arrange(desc(vote_pct))
+general_2020 <- read.xlsx("./data/Philadelphia County Results.xlsx", startRow = 5, sheet = 1) %>%
+  dplyr::select(-1) %>%
+  rename(ward_division = `Ward-Division`) %>%
+  mutate(ward_division = gsub("-", "", ward_division)) %>%
+  filter(ward_division != "TOTALS") %>%
+  rename("Democratic" = 2, "Republican" = 3, "Libertarian" = 4, "Write-In" = 5) %>%
+  gather(key = "PARTY", value = "VOTES", -ward_division) %>%
+  group_by(ward_division, PARTY) %>%
+  summarize(VOTES = sum(VOTES)) %>%
+  ungroup() %>%
+  group_by(ward_division) %>%
+  mutate(vote_pct = round(VOTES / sum(VOTES), 2),
+         Year = "2020") %>%
+  arrange(desc(vote_pct))
+
+all_years <- rbind(general_2008, general_2012, general_2016, general_2020)
+```
+
+# Create table of total vote share per year
+```{r}
+all_years %>%
+  mutate(PARTY = case_when(
+    !PARTY %in% c("Democratic", "Republican") ~ "Other/Write-in",
+    TRUE ~ PARTY
+  )) %>%
+  group_by(Year, PARTY) %>%
+  summarize(Votes = sum(VOTES)) %>%
+  ungroup() %>%
+  group_by(Year) %>%
+  mutate(Percent = paste0(round(Votes / sum(Votes) * 100, 1), "%")) %>%
+  ungroup() %>%
+  pivot_wider(
+    Year, names_from = PARTY, values_from = Percent
+  ) %>%
+  select(Year, Democratic, Republican, `Other/Write-in`) %>%
+  gt() %>%
+  tab_header(
+    title = "Votes Share by Party in Philadelphia",
+    subtitle = "Presidential Elections 2008 - 2020"
+  ) %>%
+  tab_footnote(
+    footnote = "Preliminary, as of approx. 3:00 AM 11/7",
+    locations = cells_body(
+      columns = vars(Year),
+      rows = Year == "2020"
+    )
+  ) %>%
+  opt_footnote_marks(marks = c("*", "+")) %>%
+  tab_source_note(
+    source_note = "Source: PhiladelphiaVotes.com"
+  ) %>%
+  tab_source_note(
+    source_note = "Analysis: @WesWeaver | wesmapping.com"
+  )
+  
+```
+
+
+```{r}
+# 2008 ward divs
+ward_divs_2008 <- st_read("./data/2008_12_Ward_Divisions.shp", quiet = T) %>%
+  left_join(general_2008 %>% slice(1L), by = c("WARD_DIVSN" = "ward_division")) %>%
+  st_transform("+init=epsg:3857")
+ward_divs_2008 <- ward_divs_2008[c("PARTY", "VOTES", "vote_pct", "Year", "geometry")]
+```
+
+```{r}
+# map it!
+ward_divs_2008 %>%
+  ggplot()+
+  geom_sf(aes(fill = PARTY, geometry = geometry), color = NA)
+```
+
+```{r}
+# 2012 ward divs
+ward_divs_2012 <- st_read("./data/2012_09_Ward_Divisions.shp", quiet = T) %>%
+  left_join(general_2012 %>% slice(1L), by = c("WARD_DIVSN" = "ward_division")) %>%
+  st_transform("+init=epsg:3857")
+ward_divs_2012 <- ward_divs_2012[c("PARTY", "VOTES", "vote_pct", "Year", "geometry")]
+```
+
+```{r}
+# map it!
+ward_divs_2012 %>%
+  ggplot()+
+  geom_sf(aes(fill = PARTY, geometry = geometry), color = NA)
+```
+
+```{r}
+ward_divs_2016 <- st_read("./data/2016_Ward_Divisions.shp", quiet = T) %>%
+  left_join(general_2016 %>% slice(1L), by = c("WARD_DIVSN" = "ward_division")) %>%
+  st_transform("+init=epsg:3857")
+ward_divs_2016 <- ward_divs_2016[c("PARTY", "VOTES", "vote_pct", "Year", "geometry")]
+```
+
+```{r}
+# map it!
+ward_divs_2016 %>%
+  ggplot()+
+  geom_sf(aes(fill = PARTY, geometry = geometry), color = NA)
+```
+
+```{r}
+ward_divs_2020 <- st_read("http://data.phl.opendata.arcgis.com/datasets/160a3665943d4864806d7b1399029a04_0.geojson", quiet = T) %>%
+  left_join(general_2020 %>% slice(1L), by = c("DIVISION_NUM" = "ward_division")) %>%
+  st_transform("+init=epsg:3857")
+ward_divs_2020 <- ward_divs_2020[c("PARTY", "VOTES", "vote_pct", "Year", "geometry")]
+```
+
+```{r}
+# map it!
+ward_divs_2020 %>%
+  ggplot()+
+  geom_sf(aes(fill = PARTY, geometry = geometry), color = NA)
+```
+
+Create a summary map of all years as a facet grid
+
+```{r, fig.height= 8, fig.width=8}
+all_years <- rbind(ward_divs_2008, ward_divs_2012, ward_divs_2016, ward_divs_2020)
+
+all_years %>%
+  ggplot()+
+  geom_sf(aes(fill = PARTY, geometry = geometry, alpha = vote_pct), color = NA)+
+  scale_fill_manual(values = c("#3333ff", "#cc0000"), name = "Party")+
+  scale_alpha_continuous(labels = scales::percent_format(), name = "Percent of Vote")+
+  facet_wrap(~Year)+
+  theme_minimal()+
+  theme(
+    axis.text = element_blank(),
+    panel.grid = element_blank()
+  )+
+  labs(
+    title = "Vote Share for President by Party 2008 - 2020 in Philadelphia",
+    subtitle = "By 'Winner' of Division",
+    caption = "Source: PhiladelphiaVotes.com\nMap by @WesWeaver | wesmapping.com"
+  )
+```
+
+

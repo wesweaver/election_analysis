@@ -1,0 +1,191 @@
+---
+title: "philadelphia presidential 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(openxlsx)
+library(sf)
+```
+
+# Presidential Results
+
+```{r}
+# load ward/divs from opendataphilly link
+ward_divisions <- st_read("http://data.phl.opendata.arcgis.com/datasets/160a3665943d4864806d7b1399029a04_0.geojson")
+
+# read presidential sheet, summarize, and turn into carto readable shapefile for map located at  https://wesweaver.carto.com/viz/a6bfc661-c761-4340-8b0b-409d43dd3da3/embed_map
+all_results <- read.xlsx("Philadelphia County Results.xlsx", startRow = 5, sheet = 1) %>%
+  dplyr::select(-1) %>%
+  filter(`Ward-Division` != "TOTALS") %>%
+  rename(
+    "Biden/Harris" = JOSEPH.R.BIDEN.AND.KAMALA.D.HARRIS,
+    "Trump/Pence" = DONALD.J.TRUMP.AND.MICHAEL.R.PENCE,
+    "Jorgensen/Cohen" = JO.JORGENSEN.AND.JEREMY.SPIKE.COHEN
+  ) %>%
+  mutate(`Ward-Division` = gsub("-", "", `Ward-Division`),
+         Total_Votes = `Biden/Harris` + `Trump/Pence` + `Jorgensen/Cohen` + `Write-in`,
+         Biden_pct = round(`Biden/Harris` / Total_Votes, 5),
+         Trump_pct = round(`Trump/Pence` / Total_Votes, 5),
+         Jorgensen_pct = round(`Jorgensen/Cohen` / Total_Votes, 5),
+         Write_in_pct = round(`Write-in` / Total_Votes, 5),
+         biden_pct_char = paste0(round(Biden_pct * 100, 2), "%"),
+         trump_pct_char = paste0(round(Trump_pct * 100, 2), "%"),
+         jorgensen_pct_char = paste0(round(Jorgensen_pct * 100, 2), "%"),
+         write_in_pct_char = paste0(round(Write_in_pct * 100, 2), "%")
+  ) %>%
+  mutate(Winner = case_when(
+    Biden_pct > Trump_pct & Biden_pct > Jorgensen_pct & Biden_pct > Write_in_pct ~ "Biden/Harris",
+    Trump_pct > Biden_pct & Trump_pct > Jorgensen_pct & Trump_pct > Write_in_pct ~ "Trump/Pence",
+    TRUE ~ "Tie"
+  ),
+  win_pct = case_when(
+    Winner == "Biden/Harris" ~ Biden_pct,
+    Winner == "Trump/Pence" ~ Trump_pct
+  )
+  )
+
+# join to shape
+mapped_divisions <- ward_divisions %>%
+  left_join(all_results, by = c("DIVISION_NUM" = "Ward-Division"))
+
+# save shapefile
+st_write(mapped_divisions, "pres_2020_warddivs.shp")
+```
+
+# PA House District Results
+
+```{r}
+# read 184th district shape and save to carto readable shapefile for map located at: https://wesweaver.carto.com/viz/7462b4ed-a0a4-4c84-85c6-bd2077e07dbd/embed_map
+pa_184th_results <- read.xlsx("Philadelphia County Results.xlsx", startRow = 5, sheet = "REPRESENTATIVE IN THE GEN 24") %>%
+  dplyr::select(-1) %>%
+  filter(`Ward-Division` != "TOTALS") %>%
+  rename(
+    "Elizabeth Fiedler" = ELIZABETH.FIEDLER,
+    "Lou Menna IV" = LOU.MENNA.IV
+  ) %>%
+  mutate(`Ward-Division` = gsub("-", "", `Ward-Division`),
+         Total_Votes = `Elizabeth Fiedler` + `Lou Menna IV` + `Write-in`,
+         fiedler_pct = round(`Elizabeth Fiedler` / Total_Votes, 5),
+         menna_pct = round(`Lou Menna IV` / Total_Votes, 5),
+         Write_in_pct = round(`Write-in` / Total_Votes, 5),
+         fiedler_pct_char = paste0(round(fiedler_pct * 100, 2), "%"),
+         menna_pct_char = paste0(round(menna_pct * 100, 2), "%"),
+         write_in_pct_char = paste0(round(Write_in_pct * 100, 2), "%")
+  ) %>%
+  mutate(Winner = case_when(
+    fiedler_pct > menna_pct & fiedler_pct > Write_in_pct ~ "Elizabeth Fiedler",
+    menna_pct > fiedler_pct & menna_pct > Write_in_pct ~ "Lou Menna IV",
+    TRUE ~ "Tie"
+  ),
+  win_pct = case_when(
+    Winner == "Elizabeth Fiedler" ~ fiedler_pct,
+    Winner == "Lou Menna IV" ~ menna_pct
+  )
+  )
+
+# join to shape
+mapped_divisions <- ward_divisions %>%
+  inner_join(pa_184th_results, by = c("DIVISION_NUM" = "Ward-Division"))
+
+# save shapefile
+st_write(mapped_divisions, "house_184th_2020_warddivs.shp")
+```
+
+```{r}
+# read 170th district shape and save to carto readable shapefile for map located at: https://wesweaver.carto.com/viz/ca983ce4-292d-402e-a7a9-deec2ca7f084/embed_map
+pa_170th_results <- read.xlsx("Philadelphia County Results.xlsx", startRow = 5, sheet = "REPRESENTATIVE IN THE GEN 14") %>%
+  dplyr::select(-1) %>%
+  filter(`Ward-Division` != "TOTALS") %>%
+  rename(
+    "Mike Doyle" = MIKE.DOYLE,
+    "Martina White" = MARTINA.WHITE
+  ) %>%
+  mutate(`Ward-Division` = gsub("-", "", `Ward-Division`),
+         Total_Votes = `Mike Doyle` + `Martina White` + `Write-in`,
+         doyle_pct = round(`Mike Doyle` / Total_Votes, 5),
+         white_pct = round(`Martina White` / Total_Votes, 5),
+         Write_in_pct = round(`Write-in` / Total_Votes, 5),
+         doyle_pct_char = paste0(round(doyle_pct * 100, 2), "%"),
+         white_pct_char = paste0(round(white_pct * 100, 2), "%"),
+         write_in_pct_char = paste0(round(Write_in_pct * 100, 2), "%")
+  ) %>%
+  mutate(Winner = case_when(
+    doyle_pct > white_pct & doyle_pct > Write_in_pct ~ "Mike Doyle",
+    white_pct > doyle_pct & white_pct > Write_in_pct ~ "Martina White",
+    TRUE ~ "Tie"
+  ),
+  win_pct = case_when(
+    Winner == "Mike Doyle" ~ doyle_pct,
+    Winner == "Martina White" ~ white_pct
+  )
+  )
+
+# join to shape
+mapped_divisions <- ward_divisions %>%
+  inner_join(pa_170th_results, by = c("DIVISION_NUM" = "Ward-Division"))
+
+# save shapefile
+st_write(mapped_divisions, "house_170th_2020_warddivs.shp")
+```
+
+# Ballot Questions
+
+There are only two options here, "Yes" and "No". Managing this is easy with a function.
+```{r}
+summarize_ballot_question <- function(workbook, sheet_name, ward_divisions){
+  question_results <- read.xlsx(workbook, startRow = 5, sheet = sheet_name)  %>%
+    dplyr::select(-1) %>%
+    filter(`Ward-Division` != "TOTALS") %>%
+    rename(Yes = YES) %>%
+    mutate(`Ward-Division` = gsub("-", "", `Ward-Division`),
+           Total_Votes = Yes + No,
+           yes_pct = round(Yes / Total_Votes, 5),
+           no_pct = round(No / Total_Votes, 5),
+           yes_pct_char = paste0(round(yes_pct * 100, 2), "%"),
+           no_pct_char = paste0(round(no_pct * 100, 2), "%")
+           ) %>%
+    mutate(Winner = case_when(
+      yes_pct > no_pct ~ "Yes",
+      no_pct > yes_pct ~ "No",
+      TRUE ~ "Tie"
+      ),
+      win_pct = case_when(
+        Winner == "Yes" ~ yes_pct,
+        Winner == "No" ~ no_pct
+        )
+      )
+  
+  mapped_divisions <- ward_divisions %>%
+    inner_join(question_results, by = c("DIVISION_NUM" = "Ward-Division"))
+  
+  return(mapped_divisions)
+}
+```
+
+```{r}
+q1_results <- summarize_ballot_question("Philadelphia County Results.xlsx", "QUESTION #1<BR>VOTE FOR 39", ward_divisions = ward_divisions)
+st_write(q1_results, "q1_2020_warddivs.shp")
+```
+
+```{r}
+q2_results <- summarize_ballot_question("Philadelphia County Results.xlsx", "QUESTION #2<BR>VOTE FOR 40", ward_divisions = ward_divisions)
+st_write(q2_results, "q2_2020_warddivs.shp")
+```
+
+```{r}
+q3_results <- summarize_ballot_question("Philadelphia County Results.xlsx", "QUESTION #3<BR>VOTE FOR 41", ward_divisions = ward_divisions)
+st_write(q3_results, "q3_2020_warddivs.shp")
+```
+
+```{r}
+q4_results <- summarize_ballot_question("Philadelphia County Results.xlsx", "QUESTION #4<BR>VOTE FOR 42", ward_divisions = ward_divisions)
+st_write(q4_results, "q4_2020_warddivs.shp")
+```
+
+
